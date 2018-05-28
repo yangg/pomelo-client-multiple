@@ -1,22 +1,25 @@
 {
-  "name": "pomelo-client-multiple",
+  "name": "@brook/pomelo-client-multiple",
   "version": "1.0.0",
   "private": false,
-   "keywords": [
+  "keywords": [
     "pomelo",
     "ws",
     "pomelo client",
     "multiple client"
   ],
-  "author": "jason lee",
+  "author": "Brook Yang",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/IceFrozen/pomelo-client-multiple.js.git"
+    "url": "git+https://github.com/yangg/pomelo-client-multiple.js.git"
+  },
+  "scripts": {
+    "postversion": "git push && npm_config_registry=https://registry.npmjs.org/ npm publish --access public"
   },
   "license": "ISC",
   "dependencies": {
-    "pomelo-protobuf": "*",
-    "pomelo-protocol": "*",
-    "ws": "*"
+    "@brook/pomelo-protocol": "^0.2.0",
+    "pomelo-protobuf": "^0.4.0",
+    "wolfy87-eventemitter": "^5.2.4"
   }
 }

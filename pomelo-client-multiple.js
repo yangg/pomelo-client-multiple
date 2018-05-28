@@ -1,8 +1,8 @@
-var WebSocket = require('ws');
-var Protocol = require('pomelo-protocol');
+
+var Protocol = require('@brook/pomelo-protocol');
 var Package = Protocol.Package;
 var Message = Protocol.Message;
-var EventEmitter = require('events').EventEmitter;
+var EventEmitter = require('wolfy87-eventemitter')
 var protobuf = require('pomelo-protobuf');
 var util = require('util');
 var JS_WS_CLIENT_TYPE = 'js-websocket';
@@ -48,9 +48,9 @@ pomelo.prototype.init = function(params, cb){
   var host = params.host;
   var port = params.port;
 
-  var url = 'ws://' + host;
-  if(port) {
-    url +=  ':' + port;
+  var url = params.url
+  if (!url) {
+    url = 'ws://' + host + (port ? (':' + port) : '')
   }
 
 
