@@ -15,7 +15,8 @@
     "url": "git+https://github.com/yangg/pomelo-client-multiple.js.git"
   },
   "scripts": {
-    "postversion": "git push && npm_config_registry=https://registry.npmjs.org/ npm publish --access public"
+    "postversion": "git push && npm_config_registry=https://registry.npmjs.org/ npm publish --access public",
+    "use": "cp ../pocket-6/node_modules/@brook/pomelo-client-multiple/pomelo-client.js ."
   },
   "license": "ISC",
   "dependencies": {

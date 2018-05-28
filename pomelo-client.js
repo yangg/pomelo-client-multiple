@@ -11,8 +11,12 @@ var nextHeartbeatTimeoutConst = 0
 var gapThresholdConst = 100 // heartbeat gap threshold
 var RES_OK = 200
 var RES_OLD_CLIENT = 501
+var CLOSE_CODE = {
+  heartbeatTimeout: 1001
+}
 
 var Pomelo = function () {
+  this.closeCode = 0
   this.socket = null
   this.reqId = 0
   this.callbacks = {}
@@ -37,21 +41,18 @@ var Pomelo = function () {
 
 Pomelo.prototype = Object.create(EventEmitter.prototype)
 Pomelo.prototype.init = function (params, cb) {
-  this.params = params
-  params.debug = true
-  this.initCallback = cb
-  var host = params.host
   var port = params.port
-
-  var url = params.url
-  if (!url) {
-    url = 'ws://' + host + (port ? (':' + port) : '')
+  if (!params.url) {
+    params.url = 'ws://' + params.host + (port ? (':' + port) : '')
   }
+  this.params = params
+  // params.debug = true
+  this.initCallback = cb
 
   if (!params.type) {
     this.handshakeBuffer.user = params.user
     this.handshakeCallback = params.handshakeCallback
-    this.initWebSocket(url, cb)
+    this.initWebSocket()
   }
 }
 
@@ -180,24 +181,24 @@ Pomelo.prototype.handshake = function (self, data) {
 
   if (self.initCallback) {
     self.initCallback(self, self.socket)
-    self.initCallback = null
+    self.emit('initialized')
+    // self.initCallback = null
   }
 }
 
 Pomelo.prototype.processPackage = function (msg) {
-  var msg1 = new Buffer(msg.toString(), 'base64')
-
   this.handlers[msg.type](this, msg.body)
 }
 
-Pomelo.prototype.initWebSocket = function (url, cb) {
+Pomelo.prototype.initWebSocket = function () {
   var self = this
   var onopen = function (event) {
+    self.reconnectAttempts = 0
     var obj = Package.encode(Package.TYPE_HANDSHAKE, Protocol.strencode(JSON.stringify(self.handshakeBuffer)))
     send(self, obj)
   }
   var onmessage = function (event) {
-    self.processPackage(Package.decode(event.data), cb)
+    self.processPackage(Package.decode(event.data))
       // new package arrived, update the heartbeat timeout
     if (self.heartbeatTimeout) {
       self.nextHeartbeatTimeout = Date.now() + self.heartbeatTimeout
@@ -208,8 +209,24 @@ Pomelo.prototype.initWebSocket = function (url, cb) {
   }
   var onclose = function (event) {
     self.emit('close', event)
+
+    if (self.params.reconnect && self.closeCode >= 0) {
+      if (self.reconnectAttempts < self.params.maxReconnectAttempts) {
+        var reconnectionDelay = self.reconnectAttempts * 2
+        self.emit('disconnect', { delay: reconnectionDelay, attempt: self.reconnectAttempts })
+        setTimeout(function () {
+          if (self.closeCode >= 0) { // closeCode not changed
+            self.emit('reconnecting', { attempt: self.reconnectAttempts })
+            self.initWebSocket()
+          }
+        }, reconnectionDelay * 1000)
+        self.reconnectAttempts++
+      } else {
+        self.emit('disconnect', false)
+      }
+    }
   }
-  this.socket = new WebSocket(url)
+  this.socket = new WebSocket(this.params.url)
   this.socket.binaryType = 'arraybuffer'
   this.socket.onopen = onopen
   this.socket.onmessage = onmessage
@@ -225,11 +242,15 @@ Pomelo.prototype.request = function (route, msg, cb) {
   }
 
   this.reqId++
-  var self = this
-  sendMessage(self, self.reqId, route, msg)
+  sendMessage(this, this.reqId, route, msg)
 
   this.callbacks[this.reqId] = cb
   this.routeMap[this.reqId] = route
+}
+
+Pomelo.prototype.notify = function (route, msg) {
+  msg = msg || {}
+  sendMessage(this, 0, route, msg)
 }
 
 var sendMessage = function (self, reqId, route, msg) {
@@ -253,12 +274,9 @@ var sendMessage = function (self, reqId, route, msg) {
   var packet = Package.encode(Package.TYPE_DATA, msg)
   send(self, packet)
 }
-Pomelo.prototype.notify = function (route, msg) {
-  msg = msg || {}
-  sendMessage(this, 0, route, msg)
-}
 
-Pomelo.prototype.disconnect = function () {
+Pomelo.prototype.disconnect = function (code) {
+  this.closeCode = code || -1
   if (this.socket) {
     if (this.socket.disconnect) this.socket.disconnect()
     if (this.socket.close) this.socket.close()
@@ -292,7 +310,7 @@ Pomelo.prototype.heartbeat = function (self, data) {
     send(self, obj)
 
     self.nextHeartbeatTimeout = Date.now() + self.heartbeatTimeout
-    self.heartbeatTimeoutId = setTimeout(self.heartbeatTimeoutCb, self.heartbeatTimeout)
+    self.heartbeatTimeoutId = setTimeout(self.heartbeatTimeoutCb.bind(self), self.heartbeatTimeout)
   }, self.heartbeatInterval)
 }
 
@@ -300,16 +318,23 @@ Pomelo.prototype.heartbeatTimeoutCb = function () {
   var self = this
   var gap = self.nextHeartbeatTimeout - Date.now()
   if (gap > self.gapThreshold) {
-    self.heartbeatTimeoutId = setTimeout(self.heartbeatTimeoutCb, gap)
+    self.heartbeatTimeoutId = setTimeout(self.heartbeatTimeoutCb.bind(this), gap)
   } else {
+    // console.warn('hb timeout')
     self.emit('heartbeat timeout')
-    self.disconnect()
+    self.disconnect(CLOSE_CODE.heartbeatTimeout)
   }
 }
 
 var send = function (self, packet) {
   if (self.socket) {
     self.socket.send(packet.buffer || packet)
+  } else if (self.closeCode >= 0) {
+    // console.warn('No socket, reconnecting...')
+    self.once('initialized', function () {
+      send(self, packet)
+    })
+    self.initWebSocket()
   }
 }
 
