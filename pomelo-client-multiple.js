@@ -4,7 +4,6 @@ var Package = Protocol.Package;
 var Message = Protocol.Message;
 var EventEmitter = require('wolfy87-eventemitter')
 var protobuf = require('pomelo-protobuf');
-var util = require('util');
 var JS_WS_CLIENT_TYPE = 'js-websocket';
 var JS_WS_CLIENT_VERSION = '0.0.1';
 
@@ -40,7 +39,7 @@ var pomelo = function(){
 	};
 }
 
-util.inherits(pomelo,EventEmitter);
+pomelo.prototype = Object.create(EventEmitter.prototype)
 pomelo.prototype.init = function(params, cb){
   this.params = params;
   params.debug = true;
