@@ -309,7 +309,7 @@ Pomelo.prototype.heartbeatTimeoutCb = function () {
 
 var send = function (self, packet) {
   if (self.socket) {
-    self.socket.send(packet.buffer || packet, { binary: true, mask: true })
+    self.socket.send(packet.buffer || packet)
   }
 }
 
