@@ -181,6 +181,7 @@ Pomelo.prototype.handshake = function (self, data) {
 
   if (self.initCallback) {
     self.initCallback(self, self.socket)
+    self.initializing = false
     self.emit('initialized')
     // self.initCallback = null
   }
@@ -191,6 +192,10 @@ Pomelo.prototype.processPackage = function (msg) {
 }
 
 Pomelo.prototype.initWebSocket = function () {
+  if (this.initializing) {
+    return
+  }
+  this.initializing = true
   var self = this
   var onopen = function (event) {
     self.reconnectAttempts = 0
@@ -209,22 +214,9 @@ Pomelo.prototype.initWebSocket = function () {
   }
   var onclose = function (event) {
     self.emit('close', event)
+    self.initializing = false
 
-    if (self.params.reconnect && self.closeCode >= 0) {
-      if (self.reconnectAttempts < self.params.maxReconnectAttempts) {
-        var reconnectionDelay = self.reconnectAttempts * 2
-        self.emit('disconnect', { delay: reconnectionDelay, attempt: self.reconnectAttempts })
-        setTimeout(function () {
-          if (self.closeCode >= 0) { // closeCode not changed
-            self.emit('reconnecting', { attempt: self.reconnectAttempts })
-            self.initWebSocket()
-          }
-        }, reconnectionDelay * 1000)
-        self.reconnectAttempts++
-      } else {
-        self.emit('disconnect', false)
-      }
-    }
+    self.reconnect()
   }
   this.socket = new WebSocket(this.params.url)
   this.socket.binaryType = 'arraybuffer'
@@ -232,6 +224,25 @@ Pomelo.prototype.initWebSocket = function () {
   this.socket.onmessage = onmessage
   this.socket.onerror = onerror
   this.socket.onclose = onclose
+}
+
+Pomelo.prototype.reconnect = function () {
+  if (!this.initializing && this.params.reconnect && this.closeCode >= 0) {
+    if (this.reconnectAttempts < this.params.maxReconnectAttempts) {
+      var reconnectionDelay = this.reconnectAttempts * 2
+      this.emit('disconnected', { delay: reconnectionDelay, attempt: this.reconnectAttempts })
+      var self = this
+      setTimeout(function () {
+        if (self.closeCode >= 0) { // closeCode not changed
+          self.emit('reconnecting', { attempt: this.reconnectAttempts })
+          self.initWebSocket()
+        }
+      }, reconnectionDelay * 1000)
+      this.reconnectAttempts++
+    } else {
+      this.emit('disconnected', false)
+    }
+  }
 }
 
 Pomelo.prototype.request = function (route, msg, cb) {
@@ -331,10 +342,10 @@ var send = function (self, packet) {
     self.socket.send(packet.buffer || packet)
   } else if (self.closeCode >= 0) {
     // console.warn('No socket, reconnecting...')
-    self.once('initialized', function () {
-      send(self, packet)
-    })
-    self.initWebSocket()
+    // self.once('initialized', function () {
+    //   send(self, packet)
+    // })
+    // self.reconnect()
   }
 }
 
