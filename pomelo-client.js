@@ -6,7 +6,7 @@ var protobuf = require('pomelo-protobuf')
 var JS_WS_CLIENT_TYPE = 'js-websocket'
 var JS_WS_CLIENT_VERSION = '0.0.1'
 
-var heartbeatIntervalConst = 5000
+var heartbeatIntervalConst = 3000
 var nextHeartbeatTimeoutConst = 0
 var gapThresholdConst = 100 // heartbeat gap threshold
 var RES_OK = 200
@@ -181,6 +181,7 @@ Pomelo.prototype.handshake = function (self, data) {
 
   if (self.initCallback) {
     self.initCallback(self, self.socket)
+    self.reconnectAttempts = 0
     self.initializing = false
     self.emit('initialized')
     // self.initCallback = null
@@ -198,7 +199,6 @@ Pomelo.prototype.initWebSocket = function () {
   this.initializing = true
   var self = this
   var onopen = function (event) {
-    self.reconnectAttempts = 0
     var obj = Package.encode(Package.TYPE_HANDSHAKE, Protocol.strencode(JSON.stringify(self.handshakeBuffer)))
     send(self, obj)
   }
@@ -227,7 +227,10 @@ Pomelo.prototype.initWebSocket = function () {
 }
 
 Pomelo.prototype.reconnect = function () {
-  if (!this.initializing && this.params.reconnect && this.closeCode >= 0) {
+  if (!this.initializing &&
+    this.params.reconnect &&
+    (!this.socket || this.socket.readyState !== 1) &&
+    this.closeCode >= 0) {
     if (this.reconnectAttempts < this.params.maxReconnectAttempts) {
       var reconnectionDelay = this.reconnectAttempts * 2
       this.emit('disconnected', { delay: reconnectionDelay, attempt: this.reconnectAttempts })
@@ -243,6 +246,9 @@ Pomelo.prototype.reconnect = function () {
       this.emit('disconnected', false)
     }
   }
+}
+Pomelo.prototype.getdebug = function () {
+  return [this.initializing, this.params.reconnect, this.socket ? this.socket.readyState : -1, this.closeCode, this.reconnectAttempts, this.params.maxReconnectAttempts].join('|')
 }
 
 Pomelo.prototype.request = function (route, msg, cb) {
@@ -293,13 +299,12 @@ Pomelo.prototype.disconnect = function (code) {
     if (this.socket.close) this.socket.close()
     this.socket = null
   }
-  var self = this
   if (this.heartbeatId) {
-    clearTimeout(self.heartbeatId)
+    clearTimeout(this.heartbeatId)
     this.heartbeatId = null
   }
   if (this.heartbeatTimeoutId) {
-    clearTimeout(self.heartbeatTimeoutId)
+    clearTimeout(this.heartbeatTimeoutId)
     this.heartbeatTimeoutId = null
   }
 }
